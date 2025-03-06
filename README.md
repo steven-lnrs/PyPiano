@@ -5,10 +5,10 @@ This project generates a random MIDI note and plays it using the FluidSynth libr
 ## Description
 
 This project includes:
-- **`randomNote.py`**: A script that generates a random MIDI note and converts it to its corresponding musical note name (e.g., C4, D#5).
-- **`main.py`**: A script that imports the random note generator and plays the generated note using FluidSynth.
-- **`midiplayer.py`**: Under examples, it plays a prelude of Bach using the soundfile listed.
+- **`randomNote.py`**: A package that takes a note and assigns it to a MIDI number.
+- **`main.py`**: A script that creates an interactive piano that can be played using ASDFGHJ (white keys) and QWERT (black keys)
 
+![screenshot](image/image.png)
 ## Requirements
 
 Before running the project, make sure you have the following installed:

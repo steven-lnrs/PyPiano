@@ -1,7 +1,6 @@
 import pygame
 import fluidsynth
 from randomNote import note_to_midi
-from time import sleep
 
 # Initialize Pygame
 pygame.init()
