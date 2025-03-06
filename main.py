@@ -9,8 +9,7 @@ pygame.init()
 # Initialize FluidSynth
 fs = fluidsynth.Synth()
 fs.start()
-fs.polyphone = 130213091391
-sfid = fs.sfload(r"config\FluidR3_GM.sf2")
+sfid = fs.sfload(r"C:\Users\Steven\Documents\Pythonscripts\pianocode\Sf2files\FluidR3_GM.sf2")
 fs.program_select(0, sfid, 0, 0)
 
 # Constants
@@ -39,7 +38,8 @@ black_key_rects = [pygame.Rect((pos * KEY_WIDTH), 0, KEY_WIDTH * 0.6, HEIGHT * 0
 
 # Key press state
 pressed_keys = {}
-currently_playing = {}
+currently_playing_white = {} # creating a latch system so that keys already pressed don't constantly replay
+currently_playing_black = {} # I honestly couldn't tell you why but keeping them seperate works
 # Game loop
 running = True
 while running:
@@ -70,14 +70,14 @@ while running:
         if WHITE_KEYS[i] in pressed_keys:
             note = WHITE_KEY_ORDER[i]
             midi_num = note_to_midi(note, 5)
-            if i not in currently_playing:
+            if i not in currently_playing_white:
                 fs.noteon(0, midi_num, 100)
-                currently_playing[i] = True
+                currently_playing_white[i] = True
         else:
             note = WHITE_KEY_ORDER[i]
             midi_num = note_to_midi(note, 5)
             fs.noteoff(0, midi_num)  
-            try: del currently_playing[i]
+            try: del currently_playing_white[i]
             except: pass
 
 
@@ -90,11 +90,16 @@ while running:
         if BLACK_KEYS[i] in pressed_keys:
             note = BLACK_KEY_ORDER[i]
             midi_num = note_to_midi(note, 5)
-            fs.noteon(0, midi_num, 30)  # Play note (use channel 0 and velocity 30)
+            if i not in currently_playing_black:
+                fs.noteon(0, midi_num, 100)
+                currently_playing_black[i] = True  # Play note (use channel 0 and velocity 30)
         else:
             note = BLACK_KEY_ORDER[i]
             midi_num = note_to_midi(note, 5)
-            fs.noteoff(0, midi_num)  # Stop the note (velocity 0)
+            fs.noteoff(0, midi_num)  
+            try: del currently_playing_black[i]
+            except: pass
+ # Stop the note (velocity 0)
 
     pygame.display.flip()
 
