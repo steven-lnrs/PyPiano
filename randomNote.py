@@ -15,3 +15,7 @@ def generate_random_note():
     random_note = random.randint(12, 115) # Set from 0,127 if you want full range
     note_name = midi_to_note(random_note)
     return random_note, note_name
+def note_to_midi(note,octave):
+    midinum = (octave * 12) + 1
+    midinum += note_names.index(note)
+    return midinum
