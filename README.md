@@ -8,6 +8,7 @@ This project includes:
 - **`randomNote.py`**: A script that generates a random MIDI note and converts it to its corresponding musical note name (e.g., C4, D#5).
 - **`main.py`**: A script that opens a functional 2 octave piano.
 
+![image](image/image.png)
 ## Requirements
 
 Before running the project, make sure you have the following installed:
