@@ -9,7 +9,7 @@ pygame.init()
 # Initialize FluidSynth
 fs = fluidsynth.Synth()
 fs.start()
-sfid = fs.sfload(r"C:\Users\Steven\Documents\Pythonscripts\pianocode\Sf2files\FluidR3_GM.sf2")
+sfid = fs.sfload(r"cofig\FluidR3_GM.sf2")
 fs.program_select(0, sfid, 0, 0)
 
 # Constants
