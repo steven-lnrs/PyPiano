@@ -1,118 +1,147 @@
 import pygame
+import mido
+import time
 import fluidsynth
-from randomNote import note_to_midi
-from time import sleep
-
-# Initialize Pygame
-pygame.init()
-
-# Initialize FluidSynth
-fs = fluidsynth.Synth()
-fs.start()
-sfid = fs.sfload(r"config\FluidR3_GM.sf2")
-fs.program_select(0, sfid, 0, 0)
 
 # Constants
-WIDTH, HEIGHT = 1000, 300  # Increased width for multiple octaves
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-GRAY = (180, 180, 180)
 BLUE = (100, 149, 237)  # Highlight color for pressed keys
-OCTAVES = 2  # Number of octaves to support
-KEYS_PER_OCTAVE = 7  # White keys per octave
-TOTAL_WHITE_KEYS = KEYS_PER_OCTAVE * OCTAVES
-KEY_WIDTH = WIDTH // TOTAL_WHITE_KEYS  
-KEY_HEIGHT = HEIGHT
+KEY_HEIGHT = 200
+WHITE_KEY_WIDTH = 40
+BLACK_KEY_WIDTH = 20
+# Initialize Pygame
+pygame.init()
+pygame.mixer.init()
 
-# Define keys and mappings for multiple octaves
-WHITE_KEYS = ['Z', 'X', 'C', 'V', 'B', 'N', 'M',  # First octave (C4-B4)
-              'A', 'S', 'D', 'F', 'G', 'H', 'J']  # Second octave (C5-B5)
+# Load SF2 SoundFont using FluidSynth
+def init_synth(soundfont_path):
+    fs = fluidsynth.Synth()
+    fs.start()
+    sfid = fs.sfload(soundfont_path) 
+    fs.program_select(0, sfid, 0, 0)
+    return fs
 
-BLACK_KEYS = ['Q', 'W', 'R', 'T', 'Y',  # First octave (C#4 - A#4)
-              '1', '2', '4', '5', '6']  # Second octave (C#5 - A#5)
+# Function to get the minimum and maximum notes from a MIDI file
+def get_min_max_notes(midi_file_path):
+    midi_file = mido.MidiFile(midi_file_path)
+    min_note = 128  # MIDI note range is from 0 to 127
+    max_note = -1
+    for track in midi_file.tracks:
+        for msg in track:
+            if msg.type == 'note_on' or msg.type == 'note_off':
+                min_note = min(min_note, msg.note)
+                max_note = max(max_note, msg.note)
+    return min_note, max_note
 
-WHITE_KEY_ORDER = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] * OCTAVES
-BLACK_KEY_ORDER = ['C#', 'D#', 'F#', 'G#', 'A#'] * OCTAVES
+# Function to create the keyboard visualization
+def create_keyboard(min_note, max_note):
+    # Calculate the relevant range of notes to display
+    start_note = min_note - (min_note % 12)  # Start of the octave for the lowest note
+    end_note = max_note + (12 - (max_note % 12))  # End of the octave for the highest note
 
-# Calculate black key positions dynamically for all octaves
-BLACK_KEY_POSITIONS = []
-for octave in range(OCTAVES):
-    BLACK_KEY_POSITIONS += [(octave * 7) + offset for offset in [0.7, 1.7, 3.7, 4.7, 5.7]]
+    # We want to show one octave below the lowest and one octave above the highest
+    start_octave = (min_note // 12) - 1
+    end_octave = (max_note // 12) + 2
+    num_octaves = end_octave - start_octave
 
-# Create screen
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("PyPiano Visualizer")
+    screen_width = num_octaves * 7 * WHITE_KEY_WIDTH  # 7 white keys per octave
+    screen = pygame.display.set_mode((screen_width, KEY_HEIGHT))
+    pygame.display.set_caption("Scalable Piano Visualization")
 
-# Create key rectangles for multiple octaves
-white_key_rects = [pygame.Rect(i * KEY_WIDTH, 0, KEY_WIDTH, KEY_HEIGHT) for i in range(TOTAL_WHITE_KEYS)]
-black_key_rects = [pygame.Rect(pos * KEY_WIDTH, 0, KEY_WIDTH * 0.6, HEIGHT * 0.6) for pos in BLACK_KEY_POSITIONS]
+    white_key_rects = []
+    black_key_rects = []
 
-# Key press state
-pressed_keys = {}
-currently_playing = {}
+    for octave in range(start_octave, end_octave):
+        for i in range(7):  # 7 white keys per octave (C, D, E, F, G, A, B)
+            x = (octave - start_octave) * 7 * WHITE_KEY_WIDTH + i * WHITE_KEY_WIDTH
+            white_rect = pygame.Rect(x, 0, WHITE_KEY_WIDTH, KEY_HEIGHT)
+            white_key_rects.append(white_rect)
+            # Black keys (C#, D#, F#, G#, A#) (not on E or B)
+            if i in [0, 1, 3, 4, 5]:  # Black keys are placed after C, D, F, G, A
+                black_rect = pygame.Rect(x + WHITE_KEY_WIDTH - BLACK_KEY_WIDTH / 2, 0, BLACK_KEY_WIDTH, KEY_HEIGHT // 2)
+                black_key_rects.append(black_rect)
 
-# Game loop
-running = True
-while running:
-    screen.fill(WHITE)
+    return screen, white_key_rects, black_key_rects, start_note, end_note, start_octave, num_octaves
 
-    # Event handling
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.KEYDOWN:
-            key = pygame.key.name(event.key).upper()
-            if key in WHITE_KEYS or key in BLACK_KEYS:
-                if key not in pressed_keys:
-                    pressed_keys[key] = True
-        elif event.type == pygame.KEYUP:
-            key = pygame.key.name(event.key).upper()
-            if key in pressed_keys:
-                del pressed_keys[key]
+# Function to convert MIDI note to the corresponding index for the key on the keyboard
+def midi_to_key_index(note, start_note):
+    return note - start_note
 
-    # Draw white keys and handle note-on/note-off
-    for i, rect in enumerate(white_key_rects):
-        color = BLUE if WHITE_KEYS[i] in pressed_keys else WHITE
-        pygame.draw.rect(screen, color, rect)
-        pygame.draw.rect(screen, BLACK, rect, 2)  # Key outlines
+# Function to play the MIDI file and visualize the corresponding piano keys
+def play_midi_and_visualize(midi_file_path, screen, white_key_rects, black_key_rects, synth, start_octave, num_octave):
+    # Load MIDI file
+    midi_file = mido.MidiFile(midi_file_path)
+    WHITE_KEY_ORDER = [1,3,5,6,8,10,12] * num_octave
+    # Track note press/release events
+    pressed_keys = set()
+    midi_ticks_per_beat = midi_file.ticks_per_beat
 
-        # Handle note-on and note-off for white keys
-        if WHITE_KEYS[i] in pressed_keys:
-            note = WHITE_KEY_ORDER[i]
-            octave = (i // KEYS_PER_OCTAVE) + 4  # Assign octaves dynamically (starting from 4)
-            midi_num = note_to_midi(note, octave)
-            if midi_num not in currently_playing:  # Use MIDI number for tracking
-                fs.noteon(0, midi_num, 100)
-                currently_playing[midi_num] = True
-        else:
-            note = WHITE_KEY_ORDER[i]
-            octave = (i // KEYS_PER_OCTAVE) + 4
-            midi_num = note_to_midi(note, octave)
-            if midi_num in currently_playing:  # Ensure it's playing before stopping
-                fs.noteoff(0, midi_num)
-                currently_playing.pop(midi_num, None)  # Remove from playing dictionary
+    running = True
+    for msg in midi_file.play():
+        if msg.type == 'note_on':
+            pressed_keys.add(msg.note)
+            synth.noteon(msg.channel, msg.note, msg.velocity)
+        elif msg.type == 'note_off':
+            if msg.note in pressed_keys:
+                pressed_keys.remove(msg.note)
+            synth.noteoff(msg.channel, msg.note)
 
-    # Draw black keys and handle note-on/note-off
-    for i, rect in enumerate(black_key_rects):
-        color = GRAY if BLACK_KEYS[i] in pressed_keys else BLACK
-        pygame.draw.rect(screen, color, rect)
+        # Event handling
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                break
 
-        # Handle note-on and note-off for black keys
-        if BLACK_KEYS[i] in pressed_keys:
-            note = BLACK_KEY_ORDER[i]
-            octave = (i // 5) + 4  # There are 5 black keys per octave
-            midi_num = note_to_midi(note, octave)
-            if midi_num not in currently_playing:  # Use MIDI number for tracking
-                fs.noteon(0, midi_num, 100)
-                currently_playing[midi_num] = True
-        else:
-            note = BLACK_KEY_ORDER[i]
-            octave = (i // 5) + 4
-            midi_num = note_to_midi(note, octave)
-            if midi_num in currently_playing:  # Ensure it's playing before stopping
-                fs.noteoff(0, midi_num)
-                currently_playing.pop(midi_num, None)  # Remove from playing dictionary
+        screen.fill(WHITE)  # Clear screen
+        
+        # Draw white keys
+        for i, rect in enumerate(white_key_rects):
+            # Compute the corresponding MIDI note
+            octave = start_octave + (i // 7)  # Determine which octave this key is in
+            note_in_octave = [0, 2, 4, 5, 7, 9, 11][i % 7]  # Map index to white key MIDI offset
+            white_key_index = (octave * 12) + note_in_octave  # Compute actual MIDI note number
+    
+            color = WHITE
+            if white_key_index in pressed_keys:
+                color = BLUE
+    
+            pygame.draw.rect(screen, color, rect)
+            pygame.draw.rect(screen, BLACK, rect, 2)
+            
+        # Draw black keys
+        BLACK_KEY_OFFSETS = [1, 3, 6, 8, 10]
+        for i, rect in enumerate(black_key_rects):
+            octave = start_octave + (i // 5)
+            note_in_octave = BLACK_KEY_OFFSETS[i % 5]  # Get the correct MIDI offset
+            black_key_index = (octave * 12) + note_in_octave
+            color = BLACK
 
-    pygame.display.flip()
+            if black_key_index in pressed_keys:
+                color = BLUE
+            pygame.draw.rect(screen, color, rect)
+        
+        pygame.display.flip()  # Update the display
+        time.sleep(msg.time / midi_ticks_per_beat)  # Sleep to match MIDI timing
 
-pygame.quit()
+    pygame.quit()
+
+def main():
+    midi_file = 'config/book1-prelude01.mid'  # Replace with the path to your MIDI file
+    soundfont = 'config/FluidR3_GM.sf2'  # Replace with the path to your Synthwave SoundFont (SF2)
+
+    # Get the minimum and maximum note range from the MIDI file
+    min_note, max_note = get_min_max_notes(midi_file)
+    print(f"Lowest note: {min_note}, Highest note: {max_note}")
+
+    # Initialize the synthesizer with the SF2 file
+    synth = init_synth(soundfont)
+
+    # Create the keyboard and visualization based on the note range
+    screen, white_key_rects, black_key_rects, start_note, end_note, start_octave, num_octave = create_keyboard(min_note, max_note)
+
+    # Play the MIDI and visualize it
+    play_midi_and_visualize(midi_file, screen, white_key_rects, black_key_rects, synth, start_octave, num_octave)
+
+if __name__ == "__main__":
+    main()
